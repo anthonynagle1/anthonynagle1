@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InkFrame</title>
+{% if busy %}<meta http-equiv="refresh" content="8">{% endif %}
+<style>
+  :root { --bg:#f6f4ef; --card:#fff; --ink:#1d1d1f; --muted:#6e6e73; --line:#e3e0d8; --accent:#2f5d50; --warn:#b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#151515; --card:#1f1f1f; --ink:#f2f2f2; --muted:#a0a0a0; --line:#333; --accent:#7fc4ae; --warn:#ff8a80; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.45 -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:760px; margin:0 auto; padding:16px; }
+  h1 { font-size:24px; margin:4px 0 2px; }
+  h2 { font-size:17px; margin:0 0 12px; }
+  .muted { color:var(--muted); font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin:14px 0; }
+  .status { display:flex; flex-wrap:wrap; gap:8px 18px; font-size:14px; }
+  .flash { background:var(--accent); color:#fff; border-radius:10px; padding:10px 14px; margin:10px 0; }
+  .busy { border-color:var(--accent); }
+  .warn { color:var(--warn); font-weight:600; }
+  button, .btn { font:inherit; border:0; border-radius:10px; padding:11px 16px; background:var(--accent); color:#fff; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--ink); border:1px solid var(--line); }
+  button.danger { background:transparent; color:var(--warn); border:1px solid var(--line); padding:6px 10px; font-size:13px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  input[type=file] { width:100%; margin-bottom:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:12px; }
+  .tile { background:var(--bg); border-radius:10px; overflow:hidden; border:2px solid transparent; }
+  .tile.current { border-color:var(--accent); }
+  .tile img { width:100%; aspect-ratio:3/4; object-fit:cover; display:block; }
+  .tile .row { padding:8px; gap:6px; justify-content:space-between; flex-wrap:nowrap; }
+  .tile button { padding:6px 10px; font-size:13px; }
+  label { display:block; font-size:14px; margin:10px 0 4px; color:var(--muted); }
+  select, input[type=number], input[type=time] { font:inherit; width:100%; padding:9px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink); }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+  details summary { cursor:pointer; font-weight:600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>InkFrame</h1>
+  <div class="status muted">
+    {% if has_battery %}
+      <span class="{{ 'warn' if battery is not none and battery < s.low_battery_percent }}">
+        Battery {{ '%.0f' % battery if battery is not none else '?' }}%{% if plugged %} · charging{% endif %}
+      </span>
+      <span>Next picture: {{ next_alarm }}</span>
+      {% if not plugged %}<span>Sleeps in ~{{ awake_left }} min if idle</span>{% endif %}
+    {% else %}
+      <span>No battery board found (desk-test mode)</span>
+      <span>Next picture: {{ next_alarm }}</span>
+    {% endif %}
+  </div>
+
+  {% for m in get_flashed_messages() %}<div class="flash">{{ m }}</div>{% endfor %}
+  {% if busy %}<div class="card busy">⏳ {{ busy }}</div>{% endif %}
+
+  <section class="card">
+    <h2>Add pictures</h2>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+      <input type="file" name="photos" accept="image/*" multiple required>
+      <button type="submit">Upload</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between; margin-bottom:12px">
+      <h2 style="margin:0">Pictures ({{ ids|length }})</h2>
+      <div class="row">
+        <form action="/next" method="post"><button class="secondary">Next picture</button></form>
+        {% if has_battery %}<form action="/sleep" method="post"><button class="secondary">Sleep now</button></form>{% endif %}
+      </div>
+    </div>
+    {% if not ids %}<p class="muted">No pictures yet. Upload some above.</p>{% endif %}
+    <div class="grid">
+      {% for id in ids %}
+      <div class="tile {{ 'current' if id == current }}">
+        <img src="/thumb/{{ id }}" alt="" loading="lazy">
+        <div class="row">
+          <form action="/show/{{ id }}" method="post"><button>{{ 'Showing' if id == current else 'Show' }}</button></form>
+          <form action="/delete/{{ id }}" method="post" onsubmit="return confirm('Delete this picture?')"><button class="danger">Delete</button></form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Settings</summary>
+      <form action="/settings" method="post">
+        <label>Change picture every</label>
+        <select name="interval_minutes">
+          {% for m, txt in [(60,'1 hour'),(120,'2 hours'),(240,'4 hours'),(480,'8 hours'),(720,'12 hours'),(1440,'1 day'),(4320,'3 days'),(10080,'1 week')] %}
+          <option value="{{ m }}" {{ 'selected' if s.interval_minutes == m }}>{{ txt }}</option>
+          {% endfor %}
+        </select>
+        <p class="muted">Less often = longer battery. Once a day ≈ 1–2 months per charge.</p>
+        <div class="two">
+          <div><label>Quiet from</label><input type="time" name="quiet_start" value="{{ s.quiet_start }}"></div>
+          <div><label>until</label><input type="time" name="quiet_end" value="{{ s.quiet_end }}"></div>
+        </div>
+        <div class="two">
+          <div>
+            <label>Order</label>
+            <select name="order">
+              <option value="shuffle" {{ 'selected' if s.order == 'shuffle' }}>Shuffle</option>
+              <option value="sequential" {{ 'selected' if s.order == 'sequential' }}>In order</option>
+            </select>
+          </div>
+          <div>
+            <label>Framing</label>
+            <select name="fit">
+              <option value="fill" {{ 'selected' if s.fit == 'fill' }}>Fill screen (crop)</option>
+              <option value="fit" {{ 'selected' if s.fit == 'fit' }}>Whole picture (borders)</option>
+            </select>
+          </div>
+        </div>
+        <div class="two">
+          <div><label>Colour strength (0–1)</label><input type="number" name="saturation" min="0" max="1" step="0.1" value="{{ s.saturation }}"></div>
+          <div><label>Stay awake after use (min)</label><input type="number" name="awake_minutes" min="2" max="120" value="{{ s.awake_minutes }}"></div>
+        </div>
+        <label>Picture upside down?</label>
+        <select name="rotation">
+          <option value="90" {{ 'selected' if s.rotation == 90 }}>Rotation A</option>
+          <option value="270" {{ 'selected' if s.rotation == 270 }}>Rotation B</option>
+        </select>
+        <input type="hidden" name="background" value="{{ s.background }}">
+        <p><button type="submit">Save settings</button></p>
+      </form>
+    </details>
+  </section>
+</main>
+</body>
+</html>

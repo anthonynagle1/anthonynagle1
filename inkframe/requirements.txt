@@ -1,0 +1,4 @@
+inky>=2.1
+pillow>=10.1
+pillow-heif
+flask>=3.0
