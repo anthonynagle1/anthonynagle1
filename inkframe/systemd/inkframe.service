@@ -1,0 +1,15 @@
+[Unit]
+Description=InkFrame e-ink picture frame
+After=pisugar-server.service network.target
+Wants=pisugar-server.service
+
+[Service]
+Type=simple
+Environment=INKFRAME_DATA=/var/lib/inkframe
+ExecStart=/opt/inkframe/venv/bin/python -m inkframe
+WorkingDirectory=/opt/inkframe
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
